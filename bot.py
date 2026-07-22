@@ -12,9 +12,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQu
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # ==================== КОНФИГУРАЦИЯ ====================
-# ВСТАВЬ СВОЙ ТОКЕН И АЙДИ АДМИНА!
-BOT_TOKEN = "ТВОЙ_ТОКЕН_ОТ_BOTFATHER"  # ← ВСТАВЬ СЮДА!
-ADMIN_ID = 8949540016  # ← ТВОЙ ТЕЛЕГРАМ ID
+BOT_TOKEN = "8635699813:AAHNUPR4es451IG6nwfRC8sH3acV55FvH24"
+ADMIN_ID = 8949540016
 
 # ==================== ТОВАРЫ ====================
 PRODUCTS = {
@@ -24,7 +23,7 @@ PRODUCTS = {
         "price_label": "100 Stars",
         "size": "5 ГБ",
         "emoji": "🎉",
-        "payment_link": "https://t.me/+8PPuNBR95k4yMGE5",  # ССЫЛКА НА ОПЛАТУ
+        "payment_link": "https://t.me/+8PPuNBR95k4yMGE5",
     },
     "10gb": {
         "id": "10gb",
@@ -54,7 +53,7 @@ class SupportStates(StatesGroup):
 # ==================== ИНИЦИАЛИЗАЦИЯ ====================
 logging.basicConfig(level=logging.INFO)
 storage = MemoryStorage()
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=BOT_TOKEN)  # ← ИСПРАВЛЕНО!
 dp = Dispatcher(storage=storage)
 
 # ==================== КЛАВИАТУРЫ ====================
