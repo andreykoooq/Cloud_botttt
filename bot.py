@@ -15,7 +15,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 BOT_TOKEN = "8635699813:AAHNUPR4es451IG6nwfRC8sH3acV55FvH24"
 ADMIN_ID = 8949540016
 
-# ==================== ТОВАРЫ ====================
+# ==================== ТОВАРЫ (ССЫЛКИ ОБНОВЛЕНЫ) ====================
 PRODUCTS = {
     "5gb": {
         "id": "5gb",
@@ -23,7 +23,7 @@ PRODUCTS = {
         "price_label": "100 Stars",
         "size": "5 ГБ",
         "emoji": "🎉",
-        "payment_link": "https://t.me/+8PPuNBR95k4yMGE5",
+        "payment_link": "https://t.me/+gt5EL41FfWcxNjAx",  # ← ОБНОВЛЕНО!
     },
     "10gb": {
         "id": "10gb",
@@ -31,7 +31,7 @@ PRODUCTS = {
         "price_label": "250 Stars",
         "size": "10 ГБ",
         "emoji": "🎉",
-        "payment_link": "https://t.me/+0_IKTgcrPoQwZTA5",
+        "payment_link": "https://t.me/+5xZTZZvxmuM1NDFh",  # ← ОБНОВЛЕНО!
     },
     "20gb": {
         "id": "20gb",
@@ -39,7 +39,7 @@ PRODUCTS = {
         "price_label": "350 Stars",
         "size": "20 ГБ",
         "emoji": "🎉",
-        "payment_link": "https://t.me/+_lLhJTubxpgzZTgx",
+        "payment_link": "https://t.me/+KSBdKBUrBzc2ZjMx",  # ← ОБНОВЛЕНО!
     },
 }
 
@@ -49,11 +49,13 @@ user_purchases: Dict[int, List[Dict]] = {}
 # ==================== FSM ДЛЯ ПОДДЕРЖКИ ====================
 class SupportStates(StatesGroup):
     waiting_for_ticket = State()
+    waiting_for_admin_reply = State()  # ← НОВОЕ: ожидание ответа админа
+    waiting_for_user_reply = State()   # ← НОВОЕ: ожидание ответа пользователя
 
 # ==================== ИНИЦИАЛИЗАЦИЯ ====================
 logging.basicConfig(level=logging.INFO)
 storage = MemoryStorage()
-bot = Bot(token=BOT_TOKEN)  # ← ИСПРАВЛЕНО!
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=storage)
 
 # ==================== КЛАВИАТУРЫ ====================
@@ -184,6 +186,7 @@ async def show_info(callback: CallbackQuery):
     await callback.message.edit_text(info_text, reply_markup=get_back_button())
     await callback.answer()
 
+# ==================== ПОДДЕРЖКА + ОТВЕТЫ НА ТИКЕТЫ ====================
 @dp.callback_query(F.data == "support")
 async def show_support(callback: CallbackQuery):
     support_text = (
@@ -207,19 +210,103 @@ async def write_ticket(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(SupportStates.waiting_for_ticket)
 async def process_ticket(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    username = message.from_user.username or "без username"
+    full_name = message.from_user.full_name
+    
     ticket_text = (
         f"📩 НОВЫЙ ТИКЕТ!\n\n"
-        f"👤 От: {message.from_user.full_name} (@{message.from_user.username})\n"
-        f"🆔 ID: {message.from_user.id}\n"
+        f"👤 От: {full_name} (@{username})\n"
+        f"🆔 ID: {user_id}\n"
         f"📝 Сообщение:\n{message.text}"
     )
-    await bot.send_message(ADMIN_ID, ticket_text)
+    
+    # Отправляем админу с кнопкой "Ответить"
+    admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✍️ ОТВЕТИТЬ ПОЛЬЗОВАТЕЛЮ", callback_data=f"reply_to_{user_id}")]
+    ])
+    
+    await bot.send_message(ADMIN_ID, ticket_text, reply_markup=admin_keyboard)
+    
+    # Сохраняем ID пользователя для ответа
+    await state.update_data(user_id=user_id)
+    
     await message.answer(
         "✅ Ваш тикет отправлен! Саппорт ответит вам в ближайшее время.",
         reply_markup=get_back_button()
     )
     await state.clear()
 
+# ==================== АДМИН ОТВЕЧАЕТ НА ТИКЕТ ====================
+@dp.callback_query(F.data.startswith("reply_to_"))
+async def admin_reply_to_user(callback: CallbackQuery, state: FSMContext):
+    user_id = int(callback.data.split("_")[2])
+    
+    await state.update_data(reply_user_id=user_id)
+    await state.set_state(SupportStates.waiting_for_admin_reply)
+    
+    await callback.message.edit_text(
+        f"✍️ ОТВЕТ ПОЛЬЗОВАТЕЛЮ (ID: {user_id})\n\n"
+        "Напиши текст ответа. Он будет отправлен пользователю."
+    )
+    await callback.answer()
+
+@dp.message(SupportStates.waiting_for_admin_reply)
+async def send_admin_reply_to_user(message: Message, state: FSMContext):
+    data = await state.get_data()
+    user_id = data.get("reply_user_id")
+    
+    if not user_id:
+        await message.answer("❌ Ошибка: не найден ID пользователя.")
+        await state.clear()
+        return
+    
+    reply_text = (
+        f"📩 ОТВЕТ ОТ ПОДДЕРЖКИ\n\n"
+        f"{message.text}"
+    )
+    
+    # Отправляем ответ пользователю
+    await bot.send_message(user_id, reply_text)
+    
+    # Отправляем подтверждение админу
+    await message.answer(
+        f"✅ Ответ отправлен пользователю (ID: {user_id})",
+        reply_markup=get_main_menu()
+    )
+    
+    await state.clear()
+
+# ==================== ПОЛЬЗОВАТЕЛЬ ОТВЕЧАЕТ В ТИКЕТЕ ====================
+@dp.message()
+async def user_reply_to_support(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    
+    # Если сообщение от админа - игнорируем (он в отдельном состоянии)
+    if user_id == ADMIN_ID:
+        return
+    
+    # Проверяем, есть ли активный тикет у пользователя
+    current_state = await state.get_state()
+    if current_state:
+        return
+    
+    # Отправляем админу уведомление о новом сообщении в тикете
+    admin_text = (
+        f"💬 НОВОЕ СООБЩЕНИЕ В ТИКЕТЕ\n\n"
+        f"👤 От: {message.from_user.full_name} (@{message.from_user.username})\n"
+        f"🆔 ID: {user_id}\n"
+        f"📝 Сообщение:\n{message.text}"
+    )
+    
+    admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✍️ ОТВЕТИТЬ", callback_data=f"reply_to_{user_id}")]
+    ])
+    
+    await bot.send_message(ADMIN_ID, admin_text, reply_markup=admin_keyboard)
+    await message.answer("✅ Сообщение отправлено в поддержку!")
+
+# ==================== МОИ ПОКУПКИ ====================
 @dp.callback_query(F.data == "my_purchases")
 async def show_my_purchases(callback: CallbackQuery):
     user_id = callback.from_user.id
