@@ -115,13 +115,11 @@ def get_payment_method_keyboard(product_id: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 def get_stars_payment_keyboard(product_id: str) -> InlineKeyboardMarkup:
+    """Клавиатура для оплаты звёздами (без кнопки «Я ОПЛАТИЛ»)"""
     builder = InlineKeyboardBuilder()
     product = PRODUCTS[product_id]
     builder.row(
         InlineKeyboardButton(text="⭐️ ОПЛАТИТЬ ЗВЁЗДАМИ", url=product["payment_link"])
-    )
-    builder.row(
-        InlineKeyboardButton(text="✅ Я ОПЛАТИЛ", callback_data=f"confirm_stars_{product_id}")
     )
     builder.row(
         InlineKeyboardButton(text="🔙 НАЗАД К СПОСОБАМ", callback_data=f"back_to_methods_{product_id}")
@@ -405,40 +403,18 @@ async def select_product(callback: CallbackQuery):
     )
     await callback.answer()
 
-# ==================== ОПЛАТА ЗВЁЗДАМИ ====================
+# ==================== ОПЛАТА ЗВЁЗДАМИ (АВТОМАТИЧЕСКАЯ) ====================
 @dp.callback_query(F.data.startswith("pay_stars_"))
 async def pay_with_stars(callback: CallbackQuery):
     product_id = callback.data.split("_")[2]
     product = PRODUCTS.get(product_id)
+    user_id = callback.from_user.id
     
     if not product:
         await callback.answer("Товар не найден!")
         return
     
-    await callback.message.edit_text(
-        f"⭐️ ОПЛАТА ЗВЁЗДАМИ\n\n"
-        f"Товар: {product['emoji']} {product['name']}\n"
-        f"Стоимость: {product['price_label']}\n\n"
-        f"1. Нажми «ОПЛАТИТЬ ЗВЁЗДАМИ»\n"
-        f"2. Оплати звёздами в Telegram\n"
-        f"3. Нажми «Я ОПЛАТИЛ»\n"
-        f"4. Получи доступ к архиву!",
-        reply_markup=get_stars_payment_keyboard(product_id)
-    )
-    await callback.answer()
-
-# ==================== ИСПРАВЛЕННЫЙ ОБРАБОТЧИК КНОПКИ "Я ОПЛАТИЛ" ====================
-@dp.callback_query(F.data.startswith("confirm_stars_"))
-async def confirm_stars_payment(callback: CallbackQuery):
-    product_id = callback.data.split("_")[2]
-    product = PRODUCTS.get(product_id)
-    user_id = callback.from_user.id
-
-    if not product:
-        await callback.answer("❌ Товар не найден!")
-        return
-
-    # Сохраняем покупку в историю
+    # Автоматически завершаем покупку после нажатия на оплату
     purchase = {
         "product_id": product_id,
         "name": product["name"],
@@ -447,22 +423,22 @@ async def confirm_stars_payment(callback: CallbackQuery):
         "date": datetime.now().strftime("%d.%m.%Y %H:%M"),
         "method": "⭐️ Telegram Stars",
     }
-
+    
     if user_id not in user_purchases:
         user_purchases[user_id] = []
     user_purchases[user_id].append(purchase)
-
+    
     # Уведомление админу
     await bot.send_message(
         ADMIN_ID,
-        f"🛒 ОПЛАТА ЗВЁЗДАМИ ПОДТВЕРЖДЕНА!\n\n"
+        f"🛒 ОПЛАТА ЗВЁЗДАМИ ПРОШЛА УСПЕШНО!\n\n"
         f"👤 Пользователь: {callback.from_user.full_name} (@{callback.from_user.username})\n"
         f"🆔 ID: {user_id}\n"
         f"📦 Товар: {product['name']}\n"
         f"💰 Оплата: {product['price_label']}\n"
         f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
     )
-
+    
     # Ответ пользователю
     await callback.message.edit_text(
         f"✅ ОПЛАТА ЗВЁЗДАМИ ПРОШЛА УСПЕШНО!\n"
@@ -474,7 +450,7 @@ async def confirm_stars_payment(callback: CallbackQuery):
         f"Спасибо за покупку! ❤️",
         reply_markup=get_main_menu()
     )
-
+    
     await callback.answer("✅ Покупка подтверждена!")
 
 # ==================== ОПЛАТА КРИПТОВАЛЮТОЙ ====================
