@@ -12,7 +12,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQu
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # ==================== КОНФИГУРАЦИЯ ====================
-BOT_TOKEN = "8635699813:AAHNUPR4es451IG6nwfRC8sH3acV55FvH24"
+BOT_TOKEN = "8824842825:AAEM7Hd2_klosipKVFfCur0Jpi1zbnPGfeE"
 ADMIN_ID = 8949540016
 
 # ==================== КРИПТО-АДРЕСА ====================
