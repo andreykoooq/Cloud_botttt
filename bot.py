@@ -33,7 +33,7 @@ PRODUCTS = {
         "price_usdt": "1.8$",
         "price_gram": "1.22 GRAM",
         "size": "5 ГБ",
-        "emoji": "🎉",
+        "emoji": "🎁",
         "payment_link": "https://t.me/+gt5EL41FfWcxNjAx",
     },
     "10gb": {
@@ -45,7 +45,7 @@ PRODUCTS = {
         "price_usdt": "4.5$",
         "price_gram": "3 GRAM",
         "size": "10 ГБ",
-        "emoji": "🎉",
+        "emoji": "🎁",
         "payment_link": "https://t.me/+5xZTZZvxmuM1NDFh",
     },
     "20gb": {
@@ -57,7 +57,7 @@ PRODUCTS = {
         "price_usdt": "7.2$",
         "price_gram": "4.86 GRAM",
         "size": "20 ГБ",
-        "emoji": "🎉",
+        "emoji": "🎁",
         "payment_link": "https://t.me/+KSBdKBUrBzc2ZjMx",
     },
 }
@@ -427,10 +427,55 @@ async def pay_with_stars(callback: CallbackQuery):
     )
     await callback.answer()
 
+# ==================== ИСПРАВЛЕННЫЙ ОБРАБОТЧИК КНОПКИ "Я ОПЛАТИЛ" ====================
 @dp.callback_query(F.data.startswith("confirm_stars_"))
 async def confirm_stars_payment(callback: CallbackQuery):
     product_id = callback.data.split("_")[2]
-    await complete_purchase(callback, product_id, "⭐️ Stars")
+    product = PRODUCTS.get(product_id)
+    user_id = callback.from_user.id
+
+    if not product:
+        await callback.answer("❌ Товар не найден!")
+        return
+
+    # Сохраняем покупку в историю
+    purchase = {
+        "product_id": product_id,
+        "name": product["name"],
+        "price": f"{product['price_label']}",
+        "emoji": product["emoji"],
+        "date": datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "method": "⭐️ Telegram Stars",
+    }
+
+    if user_id not in user_purchases:
+        user_purchases[user_id] = []
+    user_purchases[user_id].append(purchase)
+
+    # Уведомление админу
+    await bot.send_message(
+        ADMIN_ID,
+        f"🛒 ОПЛАТА ЗВЁЗДАМИ ПОДТВЕРЖДЕНА!\n\n"
+        f"👤 Пользователь: {callback.from_user.full_name} (@{callback.from_user.username})\n"
+        f"🆔 ID: {user_id}\n"
+        f"📦 Товар: {product['name']}\n"
+        f"💰 Оплата: {product['price_label']}\n"
+        f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+    )
+
+    # Ответ пользователю
+    await callback.message.edit_text(
+        f"✅ ОПЛАТА ЗВЁЗДАМИ ПРОШЛА УСПЕШНО!\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🎉 Ты приобрёл {product['emoji']} {product['name']}!\n"
+        f"💳 Оплачено: {product['price_label']}\n\n"
+        f"🔗 Ссылка на архив уже отправлена тебе в чат!\n\n"
+        f"📌 Если ссылка не пришла — напиши в поддержку: /support\n\n"
+        f"Спасибо за покупку! ❤️",
+        reply_markup=get_main_menu()
+    )
+
+    await callback.answer("✅ Покупка подтверждена!")
 
 # ==================== ОПЛАТА КРИПТОВАЛЮТОЙ ====================
 @dp.callback_query(F.data.startswith("pay_crypto_"))
@@ -556,7 +601,7 @@ async def process_crypto_screenshot(message: Message, state: FSMContext):
         reply_markup=get_admin_reply_keyboard(user_id)
     )
     
-    # ==================== НОВОЕ СООБЩЕНИЕ ДЛЯ ПОЛЬЗОВАТЕЛЯ ====================
+    # Отправляем подтверждение пользователю
     await message.answer(
         f"✅ СКРИНШОТ ПРИНЯТ!\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
