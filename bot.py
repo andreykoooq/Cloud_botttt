@@ -15,42 +15,58 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 BOT_TOKEN = "8635699813:AAHNUPR4es451IG6nwfRC8sH3acV55FvH24"
 ADMIN_ID = 8949540016
 
-# ==================== ТОВАРЫ (ССЫЛКИ ОБНОВЛЕНЫ) ====================
+# ==================== КРИПТО-АДРЕСА ====================
+CRYPTO_ADDRESSES = {
+    "USDT(TON)": "UQBdDAigocyBfvdbAtigQNGHbHK70vYS-1JSInDfPPLMKaCk",
+    "USDT(TRC20)": "TAhBvPrJxpN9y52N6hu73pUAvh1eULbxBU",
+    "GRAM": "UQBdDAigocyBfvdbAtigQNGHbHK70vYS-1JSInDfPPLMKaCk"
+}
+
+# ==================== ТОВАРЫ ====================
 PRODUCTS = {
     "5gb": {
         "id": "5gb",
         "name": "Пакет 5 ГБ",
         "price_label": "100 Stars",
+        "price_stars": 100,
+        "price_crypto": "15 USDT",
         "size": "5 ГБ",
         "emoji": "🎉",
-        "payment_link": "https://t.me/+gt5EL41FfWcxNjAx",  # ← ОБНОВЛЕНО!
+        "payment_link": "https://t.me/+gt5EL41FfWcxNjAx",
     },
     "10gb": {
         "id": "10gb",
         "name": "Пакет 10 ГБ",
         "price_label": "250 Stars",
+        "price_stars": 250,
+        "price_crypto": "35 USDT",
         "size": "10 ГБ",
         "emoji": "🎉",
-        "payment_link": "https://t.me/+5xZTZZvxmuM1NDFh",  # ← ОБНОВЛЕНО!
+        "payment_link": "https://t.me/+5xZTZZvxmuM1NDFh",
     },
     "20gb": {
         "id": "20gb",
         "name": "Пакет 20 ГБ",
         "price_label": "350 Stars",
+        "price_stars": 350,
+        "price_crypto": "50 USDT",
         "size": "20 ГБ",
         "emoji": "🎉",
-        "payment_link": "https://t.me/+KSBdKBUrBzc2ZjMx",  # ← ОБНОВЛЕНО!
+        "payment_link": "https://t.me/+KSBdKBUrBzc2ZjMx",
     },
 }
 
 # ==================== ХРАНИЛИЩЕ ДАННЫХ ====================
 user_purchases: Dict[int, List[Dict]] = {}
 
-# ==================== FSM ДЛЯ ПОДДЕРЖКИ ====================
+# ==================== FSM ====================
 class SupportStates(StatesGroup):
     waiting_for_ticket = State()
-    waiting_for_admin_reply = State()  # ← НОВОЕ: ожидание ответа админа
-    waiting_for_user_reply = State()   # ← НОВОЕ: ожидание ответа пользователя
+    waiting_for_admin_reply = State()
+
+class PaymentStates(StatesGroup):
+    waiting_for_method = State()
+    waiting_for_crypto_confirm = State()
 
 # ==================== ИНИЦИАЛИЗАЦИЯ ====================
 logging.basicConfig(level=logging.INFO)
@@ -79,14 +95,41 @@ def get_catalog_menu() -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text="🔙 НАЗАД", callback_data="back_to_main"))
     return builder.as_markup()
 
-def get_payment_keyboard(product_id: str) -> InlineKeyboardMarkup:
+def get_payment_method_keyboard(product_id: str) -> InlineKeyboardMarkup:
+    """Клавиатура выбора способа оплаты"""
     builder = InlineKeyboardBuilder()
-    product = PRODUCTS[product_id]
     builder.row(
-        InlineKeyboardButton(text="⭐️ ОПЛАТИТЬ И ВСТУПИТЬ", url=product["payment_link"])
+        InlineKeyboardButton(text="⭐️ Telegram Stars", callback_data=f"pay_stars_{product_id}")
+    )
+    builder.row(
+        InlineKeyboardButton(text="💎 Криптовалюта", callback_data=f"pay_crypto_{product_id}")
     )
     builder.row(
         InlineKeyboardButton(text="🔙 НАЗАД К КАТАЛОГУ", callback_data="back_to_catalog")
+    )
+    return builder.as_markup()
+
+def get_stars_payment_keyboard(product_id: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    product = PRODUCTS[product_id]
+    builder.row(
+        InlineKeyboardButton(text="⭐️ ОПЛАТИТЬ ЗВЁЗДАМИ", url=product["payment_link"])
+    )
+    builder.row(
+        InlineKeyboardButton(text="✅ Я ОПЛАТИЛ", callback_data=f"confirm_stars_{product_id}")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔙 НАЗАД К СПОСОБАМ", callback_data=f"back_to_methods_{product_id}")
+    )
+    return builder.as_markup()
+
+def get_crypto_payment_keyboard(product_id: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="✅ Я ОПЛАТИЛ КРИПТОЙ", callback_data=f"confirm_crypto_{product_id}")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔙 НАЗАД К СПОСОБАМ", callback_data=f"back_to_methods_{product_id}")
     )
     return builder.as_markup()
 
@@ -99,6 +142,13 @@ def get_support_keyboard() -> InlineKeyboardMarkup:
 def get_back_button() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔙 НАЗАД", callback_data="back_to_main"))
+    return builder.as_markup()
+
+def get_admin_reply_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="✍️ ОТВЕТИТЬ", callback_data=f"reply_to_{user_id}")
+    )
     return builder.as_markup()
 
 # ==================== ОБРАБОТЧИКИ КОМАНД ====================
@@ -166,6 +216,24 @@ async def show_catalog(callback: CallbackQuery):
     )
     await callback.answer()
 
+@dp.callback_query(F.data.startswith("back_to_methods_"))
+async def back_to_payment_methods(callback: CallbackQuery):
+    product_id = callback.data.split("_")[3]
+    product = PRODUCTS.get(product_id)
+    
+    if not product:
+        await callback.answer("Товар не найден!")
+        return
+    
+    await callback.message.edit_text(
+        f"💳 ВЫБЕРИ СПОСОБ ОПЛАТЫ\n\n"
+        f"Товар: {product['emoji']} {product['name']}\n"
+        f"Цена: {product['price_label']} / {product['price_crypto']}\n\n"
+        f"Выбери способ оплаты:",
+        reply_markup=get_payment_method_keyboard(product_id)
+    )
+    await callback.answer()
+
 @dp.callback_query(F.data == "info")
 async def show_info(callback: CallbackQuery):
     info_text = (
@@ -179,14 +247,14 @@ async def show_info(callback: CallbackQuery):
         "• Никаких ежемесячных списаний — покупка разовая.\n"
         "• Полная конфиденциальность.\n\n"
         "💰 Наш прайс-лист:\n"
-        "➕ Пакет 5 ГБ — 100 ⭐️ Stars\n"
-        "➕ Пакет 10 ГБ — 250 ⭐️ Stars\n"
-        "➕ Пакет 20 ГБ — 350 ⭐️ Stars"
+        "➕ Пакет 5 ГБ — 100 ⭐️ Stars / 15 USDT\n"
+        "➕ Пакет 10 ГБ — 250 ⭐️ Stars / 35 USDT\n"
+        "➕ Пакет 20 ГБ — 350 ⭐️ Stars / 50 USDT"
     )
     await callback.message.edit_text(info_text, reply_markup=get_back_button())
     await callback.answer()
 
-# ==================== ПОДДЕРЖКА + ОТВЕТЫ НА ТИКЕТЫ ====================
+# ==================== ПОДДЕРЖКА ====================
 @dp.callback_query(F.data == "support")
 async def show_support(callback: CallbackQuery):
     support_text = (
@@ -221,14 +289,7 @@ async def process_ticket(message: Message, state: FSMContext):
         f"📝 Сообщение:\n{message.text}"
     )
     
-    # Отправляем админу с кнопкой "Ответить"
-    admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✍️ ОТВЕТИТЬ ПОЛЬЗОВАТЕЛЮ", callback_data=f"reply_to_{user_id}")]
-    ])
-    
-    await bot.send_message(ADMIN_ID, ticket_text, reply_markup=admin_keyboard)
-    
-    # Сохраняем ID пользователя для ответа
+    await bot.send_message(ADMIN_ID, ticket_text, reply_markup=get_admin_reply_keyboard(user_id))
     await state.update_data(user_id=user_id)
     
     await message.answer(
@@ -237,7 +298,6 @@ async def process_ticket(message: Message, state: FSMContext):
     )
     await state.clear()
 
-# ==================== АДМИН ОТВЕЧАЕТ НА ТИКЕТ ====================
 @dp.callback_query(F.data.startswith("reply_to_"))
 async def admin_reply_to_user(callback: CallbackQuery, state: FSMContext):
     user_id = int(callback.data.split("_")[2])
@@ -261,37 +321,28 @@ async def send_admin_reply_to_user(message: Message, state: FSMContext):
         await state.clear()
         return
     
-    reply_text = (
-        f"📩 ОТВЕТ ОТ ПОДДЕРЖКИ\n\n"
-        f"{message.text}"
+    await bot.send_message(
+        user_id,
+        f"📩 ОТВЕТ ОТ ПОДДЕРЖКИ\n\n{message.text}"
     )
     
-    # Отправляем ответ пользователю
-    await bot.send_message(user_id, reply_text)
-    
-    # Отправляем подтверждение админу
     await message.answer(
         f"✅ Ответ отправлен пользователю (ID: {user_id})",
         reply_markup=get_main_menu()
     )
-    
     await state.clear()
 
-# ==================== ПОЛЬЗОВАТЕЛЬ ОТВЕЧАЕТ В ТИКЕТЕ ====================
 @dp.message()
 async def user_reply_to_support(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
-    # Если сообщение от админа - игнорируем (он в отдельном состоянии)
     if user_id == ADMIN_ID:
         return
     
-    # Проверяем, есть ли активный тикет у пользователя
     current_state = await state.get_state()
     if current_state:
         return
     
-    # Отправляем админу уведомление о новом сообщении в тикете
     admin_text = (
         f"💬 НОВОЕ СООБЩЕНИЕ В ТИКЕТЕ\n\n"
         f"👤 От: {message.from_user.full_name} (@{message.from_user.username})\n"
@@ -299,11 +350,7 @@ async def user_reply_to_support(message: Message, state: FSMContext):
         f"📝 Сообщение:\n{message.text}"
     )
     
-    admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✍️ ОТВЕТИТЬ", callback_data=f"reply_to_{user_id}")]
-    ])
-    
-    await bot.send_message(ADMIN_ID, admin_text, reply_markup=admin_keyboard)
+    await bot.send_message(ADMIN_ID, admin_text, reply_markup=get_admin_reply_keyboard(user_id))
     await message.answer("✅ Сообщение отправлено в поддержку!")
 
 # ==================== МОИ ПОКУПКИ ====================
@@ -328,7 +375,7 @@ async def show_my_purchases(callback: CallbackQuery):
         purchases_text += (
             f"{i}. {purchase['emoji']} {purchase['name']}\n"
             f"   📅 {purchase['date']}\n"
-            f"   💰 {purchase['price_label']}\n"
+            f"   💰 {purchase['price']}\n"
         )
     
     await callback.message.edit_text(purchases_text, reply_markup=get_back_button())
@@ -344,26 +391,77 @@ async def select_product(callback: CallbackQuery):
         await callback.answer("Товар не найден!")
         return
     
-    payment_text = (
-        f"⭐️ ОПЛАТА ЧЕРЕЗ TELEGRAM STARS\n\n"
-        f"Товар: {product['emoji']} {product['name']}\n"
-        f"Стоимость: {product['price_label']}\n\n"
-        f"📌 Инструкция:\n"
-        f"1. Нажмите кнопку «ОПЛАТИТЬ И ВСТУПИТЬ».\n"
-        f"2. Оплатите звёздами при вступлении в канал.\n"
-        f"3. После оплаты вы получите доступ к архиву!"
-    )
-    
     await callback.message.edit_text(
-        payment_text,
-        reply_markup=get_payment_keyboard(product_id)
+        f"💳 ВЫБЕРИ СПОСОБ ОПЛАТЫ\n\n"
+        f"Товар: {product['emoji']} {product['name']}\n"
+        f"Цена: {product['price_label']} / {product['price_crypto']}\n\n"
+        f"Выбери способ оплаты:",
+        reply_markup=get_payment_method_keyboard(product_id)
     )
     await callback.answer()
 
-# ==================== СИМУЛЯЦИЯ ОПЛАТЫ ====================
-@dp.callback_query(F.data.startswith("auto_confirm_"))
-async def auto_confirm_payment(callback: CallbackQuery):
+# ==================== ОПЛАТА ЗВЁЗДАМИ ====================
+@dp.callback_query(F.data.startswith("pay_stars_"))
+async def pay_with_stars(callback: CallbackQuery):
     product_id = callback.data.split("_")[2]
+    product = PRODUCTS.get(product_id)
+    
+    if not product:
+        await callback.answer("Товар не найден!")
+        return
+    
+    await callback.message.edit_text(
+        f"⭐️ ОПЛАТА ЗВЁЗДАМИ\n\n"
+        f"Товар: {product['emoji']} {product['name']}\n"
+        f"Стоимость: {product['price_label']}\n\n"
+        f"1. Нажми «ОПЛАТИТЬ ЗВЁЗДАМИ»\n"
+        f"2. Оплати звёздами в Telegram\n"
+        f"3. Нажми «Я ОПЛАТИЛ»\n"
+        f"4. Получи доступ к архиву!",
+        reply_markup=get_stars_payment_keyboard(product_id)
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("confirm_stars_"))
+async def confirm_stars_payment(callback: CallbackQuery):
+    product_id = callback.data.split("_")[2]
+    await complete_purchase(callback, product_id, "⭐️ Stars")
+
+# ==================== ОПЛАТА КРИПТОВАЛЮТОЙ ====================
+@dp.callback_query(F.data.startswith("pay_crypto_"))
+async def pay_with_crypto(callback: CallbackQuery):
+    product_id = callback.data.split("_")[2]
+    product = PRODUCTS.get(product_id)
+    
+    if not product:
+        await callback.answer("Товар не найден!")
+        return
+    
+    crypto_text = (
+        f"💎 ОПЛАТА КРИПТОВАЛЮТОЙ\n\n"
+        f"Товар: {product['emoji']} {product['name']}\n"
+        f"Стоимость: {product['price_crypto']}\n\n"
+        f"📌 Отправь оплату на один из адресов:\n\n"
+        f"🟣 USDT (TON):\n`{CRYPTO_ADDRESSES['USDT(TON)']}`\n\n"
+        f"🔵 USDT (TRC20):\n`{CRYPTO_ADDRESSES['USDT(TRC20)']}`\n\n"
+        f"🟢 GRAM:\n`{CRYPTO_ADDRESSES['GRAM']}`\n\n"
+        f"⚠️ После оплаты нажми «Я ОПЛАТИЛ» для получения архива!"
+    )
+    
+    await callback.message.edit_text(
+        crypto_text,
+        reply_markup=get_crypto_payment_keyboard(product_id),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("confirm_crypto_"))
+async def confirm_crypto_payment(callback: CallbackQuery):
+    product_id = callback.data.split("_")[2]
+    await complete_purchase(callback, product_id, "💎 Crypto")
+
+# ==================== ОБЩАЯ ФУНКЦИЯ ЗАВЕРШЕНИЯ ПОКУПКИ ====================
+async def complete_purchase(callback: CallbackQuery, product_id: str, payment_method: str):
     product = PRODUCTS.get(product_id)
     user_id = callback.from_user.id
     
@@ -374,10 +472,11 @@ async def auto_confirm_payment(callback: CallbackQuery):
     purchase = {
         "product_id": product_id,
         "name": product["name"],
-        "price_label": product["price_label"],
+        "price": f"{product['price_label']} / {product['price_crypto']}",
         "size": product["size"],
         "emoji": product["emoji"],
         "date": datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "method": payment_method,
     }
     
     if user_id not in user_purchases:
@@ -385,26 +484,29 @@ async def auto_confirm_payment(callback: CallbackQuery):
     user_purchases[user_id].append(purchase)
     
     await callback.message.edit_text(
-        f"✅ Оплата за\n"
-        f"{product['emoji']} {product['name']} успешно получена, {callback.from_user.first_name}!\n\n"
-        f"Доступ к архиву уже открыт! Спасибо за покупку! ❤️",
+        f"✅ ОПЛАТА ПОДТВЕРЖДЕНА!\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🎉 Ты приобрёл {product['emoji']} {product['name']}!\n"
+        f"💳 Оплачено: {payment_method}\n"
+        f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
+        f"🔗 Ссылка на архив будет отправлена после проверки оплаты.\n"
+        f"Ожидай, саппорт скоро свяжется с тобой!\n\n"
+        f"Спасибо за покупку! ❤️",
         reply_markup=get_main_menu()
     )
     
-    try:
-        await bot.send_message(
-            ADMIN_ID,
-            f"🛒 НОВАЯ ПОКУПКА!\n\n"
-            f"👤 Пользователь: {callback.from_user.full_name} (@{callback.from_user.username})\n"
-            f"🆔 ID: {user_id}\n"
-            f"📦 Товар: {product['name']}\n"
-            f"💰 Цена: {product['price_label']}\n"
-            f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-        )
-    except Exception as e:
-        logging.error(f"Admin notification error: {e}")
+    await bot.send_message(
+        ADMIN_ID,
+        f"🛒 НОВАЯ ПОКУПКА!\n\n"
+        f"👤 Пользователь: {callback.from_user.full_name} (@{callback.from_user.username})\n"
+        f"🆔 ID: {user_id}\n"
+        f"📦 Товар: {product['name']}\n"
+        f"💰 Оплата: {payment_method}\n"
+        f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
+        f"Проверь оплату и выдай доступ!"
+    )
     
-    await callback.answer("✅ Покупка подтверждена!")
+    await callback.answer("✅ Покупка оформлена!")
 
 # ==================== ЗАПУСК ====================
 async def main():
