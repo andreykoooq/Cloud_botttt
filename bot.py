@@ -17,8 +17,8 @@ ADMIN_ID = 8949540016
 
 # ==================== КРИПТО-АДРЕСА ====================
 CRYPTO_ADDRESSES = {
-    "USDT(TON)": "UQBdDAigocyBfvdbAtigQNGHbHK70vYS-1JSInDfPPLMKaCk",
-    "USDT(TRC20)": "TAhBvPrJxpN9y52N6hu73pUAvh1eULbxBU",
+    "USDT (TON)": "UQBdDAigocyBfvdbAtigQNGHbHK70vYS-1JSInDfPPLMKaCk",
+    "USDT (TRC20)": "TAhBvPrJxpN9y52N6hu73pUAvh1eULbxBU",
     "GRAM": "UQBdDAigocyBfvdbAtigQNGHbHK70vYS-1JSInDfPPLMKaCk"
 }
 
@@ -29,7 +29,9 @@ PRODUCTS = {
         "name": "Пакет 5 ГБ",
         "price_label": "100 Stars",
         "price_stars": 100,
-        "price_crypto": "15 USDT",
+        "price_crypto": "1.8$ / 1.22 GRAM",
+        "price_usdt": "1.8$",
+        "price_gram": "1.22 GRAM",
         "size": "5 ГБ",
         "emoji": "🎉",
         "payment_link": "https://t.me/+gt5EL41FfWcxNjAx",
@@ -39,7 +41,9 @@ PRODUCTS = {
         "name": "Пакет 10 ГБ",
         "price_label": "250 Stars",
         "price_stars": 250,
-        "price_crypto": "35 USDT",
+        "price_crypto": "4.5$ / 3 GRAM",
+        "price_usdt": "4.5$",
+        "price_gram": "3 GRAM",
         "size": "10 ГБ",
         "emoji": "🎉",
         "payment_link": "https://t.me/+5xZTZZvxmuM1NDFh",
@@ -49,7 +53,9 @@ PRODUCTS = {
         "name": "Пакет 20 ГБ",
         "price_label": "350 Stars",
         "price_stars": 350,
-        "price_crypto": "50 USDT",
+        "price_crypto": "7.2$ / 4.86 GRAM",
+        "price_usdt": "7.2$",
+        "price_gram": "4.86 GRAM",
         "size": "20 ГБ",
         "emoji": "🎉",
         "payment_link": "https://t.me/+KSBdKBUrBzc2ZjMx",
@@ -96,7 +102,6 @@ def get_catalog_menu() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 def get_payment_method_keyboard(product_id: str) -> InlineKeyboardMarkup:
-    """Клавиатура выбора способа оплаты"""
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="⭐️ Telegram Stars", callback_data=f"pay_stars_{product_id}")
@@ -247,9 +252,9 @@ async def show_info(callback: CallbackQuery):
         "• Никаких ежемесячных списаний — покупка разовая.\n"
         "• Полная конфиденциальность.\n\n"
         "💰 Наш прайс-лист:\n"
-        "➕ Пакет 5 ГБ — 100 ⭐️ Stars / 15 USDT\n"
-        "➕ Пакет 10 ГБ — 250 ⭐️ Stars / 35 USDT\n"
-        "➕ Пакет 20 ГБ — 350 ⭐️ Stars / 50 USDT"
+        "➕ Пакет 5 ГБ — 100 ⭐️ Stars / 1.8$ / 1.22 GRAM\n"
+        "➕ Пакет 10 ГБ — 250 ⭐️ Stars / 4.5$ / 3 GRAM\n"
+        "➕ Пакет 20 ГБ — 350 ⭐️ Stars / 7.2$ / 4.86 GRAM"
     )
     await callback.message.edit_text(info_text, reply_markup=get_back_button())
     await callback.answer()
@@ -442,10 +447,10 @@ async def pay_with_crypto(callback: CallbackQuery):
         f"Товар: {product['emoji']} {product['name']}\n"
         f"Стоимость: {product['price_crypto']}\n\n"
         f"📌 Отправь оплату на один из адресов:\n\n"
-        f"🟣 USDT (TON):\n`{CRYPTO_ADDRESSES['USDT(TON)']}`\n\n"
-        f"🔵 USDT (TRC20):\n`{CRYPTO_ADDRESSES['USDT(TRC20)']}`\n\n"
+        f"🟣 USDT (TON):\n`{CRYPTO_ADDRESSES['USDT (TON)']}`\n\n"
+        f"🔵 USDT (TRC20):\n`{CRYPTO_ADDRESSES['USDT (TRC20)']}`\n\n"
         f"🟢 GRAM:\n`{CRYPTO_ADDRESSES['GRAM']}`\n\n"
-        f"⚠️ После оплаты нажми «Я ОПЛАТИЛ» для получения архива!"
+        f"⚠️ После оплаты нажми «Я ОПЛАТИЛ КРИПТОЙ» для получения архива!"
     )
     
     await callback.message.edit_text(
@@ -455,13 +460,10 @@ async def pay_with_crypto(callback: CallbackQuery):
     )
     await callback.answer()
 
+# ==================== ПОДТВЕРЖДЕНИЕ КРИПТО-ОПЛАТЫ (СКРИНШОТ) ====================
 @dp.callback_query(F.data.startswith("confirm_crypto_"))
-async def confirm_crypto_payment(callback: CallbackQuery):
+async def confirm_crypto_payment(callback: CallbackQuery, state: FSMContext):
     product_id = callback.data.split("_")[2]
-    await complete_purchase(callback, product_id, "💎 Crypto")
-
-# ==================== ОБЩАЯ ФУНКЦИЯ ЗАВЕРШЕНИЯ ПОКУПКИ ====================
-async def complete_purchase(callback: CallbackQuery, product_id: str, payment_method: str):
     product = PRODUCTS.get(product_id)
     user_id = callback.from_user.id
     
@@ -469,44 +471,104 @@ async def complete_purchase(callback: CallbackQuery, product_id: str, payment_me
         await callback.answer("Товар не найден!")
         return
     
+    # Сохраняем данные о покупке в состояние
+    await state.update_data(
+        product_id=product_id,
+        product_name=product["name"],
+        product_emoji=product["emoji"],
+        product_price=product["price_crypto"]
+    )
+    
+    await callback.message.edit_text(
+        f"📸 ОТПРАВЬ СКРИНШОТ ОПЛАТЫ\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"Товар: {product['emoji']} {product['name']}\n"
+        f"Сумма: {product['price_crypto']}\n\n"
+        f"✅ Чтобы подтвердить оплату и получить доступ к архиву:\n"
+        f"1. Отправь скриншот перевода в этот чат.\n"
+        f"2. Наш саппорт проверит оплату в течение 15-30 минут.\n"
+        f"3. После проверки ты получишь ссылку на архив!\n\n"
+        f"📌 Скриншот должен быть чётким, с видимой суммой и адресом получателя.",
+        reply_markup=get_back_button()
+    )
+    
+    # Устанавливаем состояние ожидания скриншота
+    await state.set_state(PaymentStates.waiting_for_crypto_confirm)
+    await callback.answer()
+
+@dp.message(PaymentStates.waiting_for_crypto_confirm)
+async def process_crypto_screenshot(message: Message, state: FSMContext):
+    """Обработка скриншота от пользователя после крипто-оплаты"""
+    user_id = message.from_user.id
+    username = message.from_user.username or "без username"
+    full_name = message.from_user.full_name
+    
+    # Получаем данные о покупке из состояния
+    data = await state.get_data()
+    product_id = data.get("product_id")
+    product_name = data.get("product_name", "Товар")
+    product_emoji = data.get("product_emoji", "📦")
+    product_price = data.get("product_price", "0")
+    
+    # Проверяем, есть ли фото
+    if not message.photo:
+        await message.answer(
+            "❌ Пожалуйста, отправь скриншот в виде фото (изображение).\n\n"
+            "Если у тебя проблемы с отправкой, напиши в поддержку: /support"
+        )
+        return
+    
+    # Получаем фото (самое качественное)
+    photo = message.photo[-1]
+    file_id = photo.file_id
+    
+    # Сохраняем покупку в историю
     purchase = {
         "product_id": product_id,
-        "name": product["name"],
-        "price": f"{product['price_label']} / {product['price_crypto']}",
-        "size": product["size"],
-        "emoji": product["emoji"],
+        "name": product_name,
+        "price": product_price,
+        "emoji": product_emoji,
         "date": datetime.now().strftime("%d.%m.%Y %H:%M"),
-        "method": payment_method,
+        "method": "💎 Crypto (скриншот отправлен)",
     }
     
     if user_id not in user_purchases:
         user_purchases[user_id] = []
     user_purchases[user_id].append(purchase)
     
-    await callback.message.edit_text(
-        f"✅ ОПЛАТА ПОДТВЕРЖДЕНА!\n"
+    # Отправляем админу уведомление со скриншотом
+    admin_text = (
+        f"📸 НОВЫЙ СКРИНШОТ ОПЛАТЫ!\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🎉 Ты приобрёл {product['emoji']} {product['name']}!\n"
-        f"💳 Оплачено: {payment_method}\n"
+        f"👤 Пользователь: {full_name} (@{username})\n"
+        f"🆔 ID: {user_id}\n"
+        f"📦 Товар: {product_emoji} {product_name}\n"
+        f"💰 Сумма: {product_price}\n"
         f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
-        f"🔗 Ссылка на архив будет отправлена после проверки оплаты.\n"
-        f"Ожидай, саппорт скоро свяжется с тобой!\n\n"
+        f"📌 Проверь оплату и выдай доступ пользователю!"
+    )
+    
+    # Отправляем админу текст + фото
+    await bot.send_photo(
+        ADMIN_ID,
+        photo=file_id,
+        caption=admin_text,
+        reply_markup=get_admin_reply_keyboard(user_id)
+    )
+    
+    # Отправляем подтверждение пользователю
+    await message.answer(
+        f"✅ СКРИНШОТ ОТПРАВЛЕН!\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📸 Мы получили твой скриншот оплаты.\n"
+        f"Саппорт проверит его в течение 15-30 минут.\n\n"
+        f"🔗 После подтверждения ты получишь ссылку на архив в этом чате.\n\n"
         f"Спасибо за покупку! ❤️",
         reply_markup=get_main_menu()
     )
     
-    await bot.send_message(
-        ADMIN_ID,
-        f"🛒 НОВАЯ ПОКУПКА!\n\n"
-        f"👤 Пользователь: {callback.from_user.full_name} (@{callback.from_user.username})\n"
-        f"🆔 ID: {user_id}\n"
-        f"📦 Товар: {product['name']}\n"
-        f"💰 Оплата: {payment_method}\n"
-        f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
-        f"Проверь оплату и выдай доступ!"
-    )
-    
-    await callback.answer("✅ Покупка оформлена!")
+    # Очищаем состояние
+    await state.clear()
 
 # ==================== ЗАПУСК ====================
 async def main():
