@@ -34,7 +34,7 @@ PRODUCTS = {
         "price_gram": "1.22 GRAM",
         "size": "5 ГБ",
         "emoji": "🎉",
-        "payment_link": "https://t.me/+XiVr6k_GCrlkMjEx",
+        "payment_link": "https://t.me/+CyVNXcaMd3owNTNh",
     },
     "10gb": {
         "id": "10gb",
@@ -46,7 +46,7 @@ PRODUCTS = {
         "price_gram": "3 GRAM",
         "size": "10 ГБ",
         "emoji": "🎉",
-        "payment_link": "https://t.me/+17EjrpHpkxJlYTMx",
+        "payment_link": "https://t.me/+ktQoeWDqnZwzNDIx",
     },
     "20gb": {
         "id": "20gb",
@@ -58,7 +58,7 @@ PRODUCTS = {
         "price_gram": "4.86 GRAM",
         "size": "20 ГБ",
         "emoji": "🎉",
-        "payment_link": "https://t.me/+Kxs9M06a-vo3NDJh",
+        "payment_link": "https://t.me/+r7i_jBt3HmdjZjlh",
     },
 }
 
